@@ -282,6 +282,20 @@ Se algo der errado no meio, você pode rodar de novo e ele continua (resume).
 
 # 🧯 Troubleshooting
 
+
+## Erro do PSReadLine ao colar comando grande
+
+Se aparecer erro `System.ArgumentOutOfRangeException` do **PSReadLine** ao colar um comando muito longo com crases (```),
+use uma destas opções de baixo risco:
+
+1. Colar o comando em blocos menores;
+2. Salvar os parâmetros em um arquivo `.ps1` e executar o arquivo;
+3. Executar versão curta:
+
+```powershell
+.\setup_and_translate_windows.ps1 -Pdf "input\meu_arquivo.pdf" -Out "output\meu_arquivo_ptbr.pdf" -Translator "opusmt" -RenderMode "pdf_overlay_original" -PersistToolsPath
+```
+
 ## “winget não encontrado”
 - Atualize/instale **App Installer** (Microsoft Store)
 - Ou instale manualmente Python e Tesseract

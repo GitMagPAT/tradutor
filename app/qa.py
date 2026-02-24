@@ -60,6 +60,10 @@ def run_qa_scan(workdir: Path, out_pdf: Path, cfg: Dict[str, Any]) -> Dict[str, 
         "errors_total": 0,
         "high_unchanged_pages": 0,
         "zxq_leak_pages": 0,
+        "llm_post_edit_candidates_total": 0,
+        "llm_post_edit_changed_total": 0,
+        "llm_post_edit_rejected_total": 0,
+        "llm_post_edit_rejected_ratio": 0.0,
     }
     issues: List[Dict[str, Any]] = []
     page_scores: Dict[int, Dict[str, Any]] = {}
@@ -74,6 +78,13 @@ def run_qa_scan(workdir: Path, out_pdf: Path, cfg: Dict[str, Any]) -> Dict[str, 
         unchanged = _safe_int(p.get("unchanged_blocks"), 0)
         total = changed + unchanged
         native_chars = _safe_int(p.get("native_char_count"), 0)
+
+        llm_pe_candidates = _safe_int(p.get("llm_post_edit_candidates"), 0)
+        llm_pe_changed = _safe_int(p.get("llm_post_edit_changed"), 0)
+        llm_pe_rejected = len(p.get("llm_post_edit_rejected_reasons") or [])
+        summary["llm_post_edit_candidates_total"] += llm_pe_candidates
+        summary["llm_post_edit_changed_total"] += llm_pe_changed
+        summary["llm_post_edit_rejected_total"] += llm_pe_rejected
 
         sc = page_scores.setdefault(page_idx, {"score": 0, "reasons": []})
         if status not in ("ok", "ok_no_text"):
@@ -141,6 +152,11 @@ def run_qa_scan(workdir: Path, out_pdf: Path, cfg: Dict[str, Any]) -> Dict[str, 
             }
         )
 
+    if summary["llm_post_edit_candidates_total"] > 0:
+        summary["llm_post_edit_rejected_ratio"] = round(
+            summary["llm_post_edit_rejected_total"] / float(summary["llm_post_edit_candidates_total"]), 4
+        )
+
     top_risky_pages = sorted(
         [
             {
@@ -155,7 +171,6 @@ def run_qa_scan(workdir: Path, out_pdf: Path, cfg: Dict[str, Any]) -> Dict[str, 
         reverse=True,
     )
 
-<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf
     llm_review: Dict[str, Any] = {}
     llm_assist = build_llm_assist_client(cfg)
     llm_cfg = (cfg.get("llm_assist") or {}) if isinstance(cfg, dict) else {}
@@ -168,9 +183,9 @@ def run_qa_scan(workdir: Path, out_pdf: Path, cfg: Dict[str, Any]) -> Dict[str, 
         except Exception:
             llm_review = {"risk_summary": "NÃO CONSTA", "actions": [], "confidence": 0.0}
 
-=======
->>>>>>> main
+   main
     report: Dict[str, Any] = {
+        "schema_version": "qa_report.v2",
         "enabled": True,
         "summary": {**summary, "top_risky_pages": top_risky_pages[:10]},
         "issues": issues,

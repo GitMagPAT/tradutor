@@ -29,6 +29,9 @@ def test_run_qa_scan_generates_top_risky_and_custom_report(tmp_path: Path):
                 "changed_blocks": 1,
                 "unchanged_blocks": 9,
                 "native_char_count": 400,
+                "llm_post_edit_candidates": 5,
+                "llm_post_edit_changed": 3,
+                "llm_post_edit_rejected_reasons": [{"block_id": "x", "reasons": ["numbers_units_changed"]}],
             }
         ),
         encoding="utf-8",
@@ -51,6 +54,13 @@ def test_run_qa_scan_generates_top_risky_and_custom_report(tmp_path: Path):
 
     report = run_qa_scan(workdir=workdir, out_pdf=out_pdf, cfg=cfg)
     assert report["enabled"] is True
+    assert report["schema_version"] == "qa_report.v2"
+    assert report["summary"]["high_unchanged_pages"] == 1
+    assert isinstance(report["summary"]["top_risky_pages"], list)
+    assert report["summary"]["llm_post_edit_candidates_total"] == 5
+    assert report["summary"]["llm_post_edit_changed_total"] == 3
+    assert report["summary"]["llm_post_edit_rejected_total"] == 1
+    assert report["summary"]["llm_post_edit_rejected_ratio"] == 0.2
     assert report["summary"]["high_unchanged_pages"] == 1
     assert isinstance(report["summary"]["top_risky_pages"], list)
     assert custom_report.exists()

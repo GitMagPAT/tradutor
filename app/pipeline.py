@@ -38,6 +38,21 @@ class TranslatorFatalError(RuntimeError):
 
 
 
+
+
+def _resolve_native_cover_mode(has_images: bool, configured_mode: str, auto_mode: bool) -> str:
+    """Resolve modo de cobertura de texto nativo (baixo risco).
+
+    - Em páginas sem imagens, usar `block` reduz vazamento visual do texto original.
+    - Em páginas com imagens/diagramas, manter modo configurado (`line`/`word`) evita
+      apagar traços finos das figuras.
+    """
+    mode = str(configured_mode or "line").strip().lower()
+    if mode not in ("block", "line", "word"):
+        mode = "line"
+    if auto_mode and (not has_images):
+        return "block"
+    return mode
 def _filter_ocr_duplicates(
     ocr_blocks: List[TextBlock],
     native_blocks: List[TextBlock],
@@ -481,7 +496,13 @@ def run_pipeline(
                 # 1) Extração nativa
                 if page_type in (PageType.NATIVE, PageType.HYBRID):
                     t_ext0 = time.time()
-                    native_cover_mode = cfg.get("render", {}).get("native_cover_mode", "line")
+                    native_cover_mode_cfg = cfg.get("render", {}).get("native_cover_mode", "line")
+                    auto_native_cover_mode = bool(cfg.get("render", {}).get("auto_native_cover_mode", True))
+                    native_cover_mode = _resolve_native_cover_mode(
+                        has_images=bool(has_images),
+                        configured_mode=str(native_cover_mode_cfg),
+                        auto_mode=auto_native_cover_mode,
+                    )
                     native_blocks = extract_native_text_blocks(
                         page,
                         page_number=page_number,
