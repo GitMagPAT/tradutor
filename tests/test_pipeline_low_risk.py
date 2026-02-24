@@ -1,4 +1,5 @@
 from app.pipeline import _resolve_native_cover_mode, _effective_max_cover_area_ratio_native
+from app.pipeline import _resolve_native_cover_mode
 
 
 def test_resolve_native_cover_mode_auto_switches_without_images():
