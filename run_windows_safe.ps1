@@ -53,21 +53,21 @@ if ($conflicts) {
 
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
-$setupParams = @{
-  Pdf = $Pdf
-  Out = $Out
-  Translator = $Translator
-  SourceLang = $SourceLang
-  TargetLang = $TargetLang
-  Dpi = $Dpi
-  RenderMode = $RenderMode
-  StartPage = $StartPage
-  EndPage = $EndPage
-  PersistToolsPath = $true
-}
+$argsList = @(
+  "-Pdf", $Pdf,
+  "-Out", $Out,
+  "-Translator", $Translator,
+  "-SourceLang", $SourceLang,
+  "-TargetLang", $TargetLang,
+  "-Dpi", $Dpi,
+  "-RenderMode", $RenderMode,
+  "-StartPage", $StartPage,
+  "-EndPage", $EndPage,
+  "-PersistToolsPath"
+)
 
 Write-Host "[INFO] Executando setup com parâmetros estáveis (sem multiline com crase)..." -ForegroundColor Cyan
-& .\$setupFile @setupParams
+& .\$setupFile @argsList
 if ($LASTEXITCODE -ne 0) {
   throw "Falha na tradução (exit code $LASTEXITCODE). Veja logs em work\\logs."
 }

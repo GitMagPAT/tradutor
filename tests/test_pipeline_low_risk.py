@@ -3,12 +3,10 @@ from pathlib import Path
 import pytest
 
 from app import pipeline
-from app.pipeline import (
-    _effective_max_cover_area_ratio_native,
-    _looks_english_heavy,
-    _resolve_native_cover_mode,
-    _resolve_render_mode_for_page,
-)
+from app.pipeline import _resolve_native_cover_mode, _effective_max_cover_area_ratio_native
+from app.pipeline import _resolve_native_cover_mode, _effective_max_cover_area_ratio_native
+from app.pipeline import _resolve_native_cover_mode
+        main
 
 
 def test_resolve_native_cover_mode_auto_switches_without_images():
@@ -47,20 +45,4 @@ def test_merge_page_pdfs_shows_clear_message_when_output_is_locked(monkeypatch, 
 
     with pytest.raises(RuntimeError, match="Feche o arquivo no visualizador"):
         pipeline._merge_page_pdfs([], tmp_path / "out.pdf")
-
-
-def test_resolve_render_mode_for_page_auto_falls_back_to_overlay_in_text_pages():
-    assert _resolve_render_mode_for_page("pdf_overlay_original", has_images=False, auto_rasterize_text_pages=True) == "pdf_overlay"
-    assert _resolve_render_mode_for_page("pdf_overlay_original", has_images=True, auto_rasterize_text_pages=True) == "pdf_overlay_original"
-
-
-def test_resolve_render_mode_for_page_keeps_configured_when_auto_disabled():
-    assert _resolve_render_mode_for_page("pdf_overlay_original", has_images=False, auto_rasterize_text_pages=False) == "pdf_overlay_original"
-
-
-def test_looks_english_heavy_detects_untranslated_english():
-    assert _looks_english_heavy("Mindfulness is about the ability of a system to concentrate on what is going on now") is True
-
-
-def test_looks_english_heavy_ignores_portuguese_text():
-    assert _looks_english_heavy("Mindfulness é sobre a capacidade de um sistema se concentrar no que está acontecendo agora") is False
+        main

@@ -61,4 +61,6 @@ def test_run_qa_scan_generates_top_risky_and_custom_report(tmp_path: Path):
     assert report["summary"]["llm_post_edit_changed_total"] == 3
     assert report["summary"]["llm_post_edit_rejected_total"] == 1
     assert report["summary"]["llm_post_edit_rejected_ratio"] == 0.2
+    assert report["summary"]["high_unchanged_pages"] == 1
+    assert isinstance(report["summary"]["top_risky_pages"], list)
     assert custom_report.exists()
