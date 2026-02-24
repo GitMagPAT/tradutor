@@ -92,21 +92,36 @@ def _filter_ocr_duplicates(
 
 def _merge_page_pdfs(page_pdfs: List[Path], out_pdf: Path) -> None:
     out_doc = fitz.open()
-    for p in page_pdfs:
-        if not Path(p).exists():
-            continue
-        src = fitz.open(str(p))
-        out_doc.insert_pdf(src)
-        src.close()
-    # Otimiza tamanho do arquivo final (baixo risco)
-    out_doc.save(
-        str(out_pdf),
-        garbage=4,
-        deflate=True,
-        deflate_images=True,
-        deflate_fonts=True,
-    )
-    out_doc.close()
+    tmp_out = out_pdf.with_suffix(out_pdf.suffix + ".tmp")
+    try:
+        for p in page_pdfs:
+            if not Path(p).exists():
+                continue
+            src = fitz.open(str(p))
+            out_doc.insert_pdf(src)
+            src.close()
+
+        if tmp_out.exists():
+            tmp_out.unlink()
+
+        # Otimiza tamanho do arquivo final (baixo risco)
+        out_doc.save(
+            str(tmp_out),
+            garbage=4,
+            deflate=True,
+            deflate_images=True,
+            deflate_fonts=True,
+        )
+    finally:
+        out_doc.close()
+
+    try:
+        tmp_out.replace(out_pdf)
+    except PermissionError as exc:
+        raise RuntimeError(
+            f"Não foi possível sobrescrever o PDF de saída '{out_pdf}'. "
+            "Feche o arquivo no visualizador (Adobe/Edge/etc.) e tente novamente."
+        ) from exc
 
 
 def _preserve_pdf_features(src_pdf: Path, out_pdf: Path) -> None:

@@ -300,6 +300,31 @@ use uma destas opções de baixo risco:
 - Atualize/instale **App Installer** (Microsoft Store)
 - Ou instale manualmente Python e Tesseract
 
+## “IndentationError” / “SyntaxError” em `app/qa.py` (ou outro módulo)
+
+Se aparecer erro de sintaxe/indentação durante o QA (`IndentationError`, `SyntaxError`), isso indica arquivo com conflito/edição quebrada.
+
+1. Atualize seu branch com `origin/main`.
+2. Rode validação rápida:
+
+```powershell
+python -m py_compile app\qa.py app\pipeline.py app\translate.py
+```
+
+3. Execute novamente o script de tradução.
+
+> O `setup_and_translate_windows.ps1` já faz validação de sintaxe antes de iniciar o pipeline.
+
+## “Permission denied” ao salvar `output\...pdf`
+
+Se aparecer erro como `cannot remove file ... Permission denied`, normalmente o PDF de saída está aberto em outro programa.
+
+1. Feche o arquivo em visualizadores (Adobe, Edge, navegador com preview, etc.).
+2. Rode novamente o comando.
+3. Se necessário, troque o nome de saída (`-Out`) para um novo arquivo.
+
+> O script agora valida esse cenário antes de iniciar o pipeline e aborta com mensagem clara quando o arquivo estiver bloqueado.
+
 ## “tesseract.exe não encontrado”
 - Verifique se existe:
   - `C:\Program Files\Tesseract-OCR\tesseract.exe`

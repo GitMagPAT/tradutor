@@ -183,7 +183,10 @@ def run_qa_scan(workdir: Path, out_pdf: Path, cfg: Dict[str, Any]) -> Dict[str, 
         except Exception:
             llm_review = {"risk_summary": "NÃO CONSTA", "actions": [], "confidence": 0.0}
 
+<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf
+=======
    main
+>>>>>>> main
     report: Dict[str, Any] = {
         "schema_version": "qa_report.v2",
         "enabled": True,
