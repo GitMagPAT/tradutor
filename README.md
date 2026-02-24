@@ -283,49 +283,6 @@ Se algo der errado no meio, você pode rodar de novo e ele continua (resume).
 # 🧯 Troubleshooting
 
 
-## Execução segura (evita PSReadLine + repara conflito automaticamente)
-
-## Runner antigo com `@argsList` (erro no parâmetro Translator)
-
-Se o comando abaixo retornar resultado:
-
-```powershell
-Select-String -Path .\run_windows_safe.ps1 -Pattern '@argsList'
-```
-
-seu `run_windows_safe.ps1` está desatualizado e vai falhar com erro de binding (`-Out` virando valor de `-Translator`).
-
-Atualize **os dois scripts** e valide:
-
-```powershell
-git fetch origin
-git checkout origin/main -- run_windows_safe.ps1 setup_and_translate_windows.ps1
-Select-String -Path .\run_windows_safe.ps1 -Pattern '@setupParams'
-Select-String -Path .\run_windows_safe.ps1 -Pattern '@argsList'
-```
-
-Resultado esperado:
-- `@setupParams` aparece;
-- `@argsList` não aparece.
-
-Depois rode novamente:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run_windows_safe.ps1 -Base "C:\Users\08292421394\Downloads\pdf_translate_ptbr_v0.3.6" -Pdf "input\meu_arquivo.pdf" -Out "output\meu_arquivo_ptbr_final.pdf" -Translator "opusmt" -RenderMode "pdf_overlay" -StartPage 0 -EndPage 22
-```
-
-Se você estiver travado com erro do **PSReadLine** ao colar comandos longos e/ou `<<<<<<<` no `setup_and_translate_windows.ps1`, use o runner seguro:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run_windows_safe.ps1 -Base "C:\Users\08292421394\Downloads\pdf_translate_ptbr_v0.3.6" -Pdf "input\meu_arquivo.pdf" -Translator "opusmt" -RenderMode "pdf_overlay" -StartPage 0 -EndPage 22
-```
-
-Esse script:
-- evita comando multilinha com crase (causa comum do bug do PSReadLine);
-- detecta `<<<<<<<`/`=======`/`>>>>>>>` em `setup_and_translate_windows.ps1`;
-- tenta reparar automaticamente com `git restore` (HEAD) e fallback `origin/main`;
-- só então chama o setup normal com parâmetros curtos e estáveis.
-
 ## Erro do PSReadLine ao colar comando grande
 
 Se aparecer erro `System.ArgumentOutOfRangeException` do **PSReadLine** ao colar um comando muito longo com crases (```),
@@ -364,6 +321,7 @@ Select-String -Path .\setup_and_translate_windows.ps1 -Pattern '^(<<<<<<< |=====
 
 > Dica: evite editar o arquivo manualmente quando estiver com conflito; restaure do `origin/main` primeiro.
 
+ main
 ## “IndentationError” / “SyntaxError” em `app/qa.py` (ou outro módulo)
 
 Se aparecer erro de sintaxe/indentação durante o QA (`IndentationError`, `SyntaxError`), isso indica arquivo com conflito/edição quebrada.
@@ -393,6 +351,7 @@ Se quiser máxima força em todo o documento, use direto:
 .\setup_and_translate_windows.ps1 -Pdf "input\meu_arquivo.pdf" -RenderMode "pdf_overlay"
 ```
 
+ main
 ## “Permission denied” ao salvar `output\...pdf`
 
 Se aparecer erro como `cannot remove file ... Permission denied`, normalmente o PDF de saída está aberto em outro programa.
