@@ -155,6 +155,7 @@ def run_qa_scan(workdir: Path, out_pdf: Path, cfg: Dict[str, Any]) -> Dict[str, 
         reverse=True,
     )
 
+<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf
     llm_review: Dict[str, Any] = {}
     llm_assist = build_llm_assist_client(cfg)
     llm_cfg = (cfg.get("llm_assist") or {}) if isinstance(cfg, dict) else {}
@@ -167,6 +168,8 @@ def run_qa_scan(workdir: Path, out_pdf: Path, cfg: Dict[str, Any]) -> Dict[str, 
         except Exception:
             llm_review = {"risk_summary": "NÃO CONSTA", "actions": [], "confidence": 0.0}
 
+=======
+>>>>>>> main
     report: Dict[str, Any] = {
         "enabled": True,
         "summary": {**summary, "top_risky_pages": top_risky_pages[:10]},
