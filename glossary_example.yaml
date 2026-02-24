@@ -1,0 +1,17 @@
+# Exemplo de glossário (YAML)
+# ---------------------------
+# Como usar:
+# 1) Copie este arquivo para "glossary.yaml"
+# 2) Ajuste os termos
+# 3) Rode o projeto normalmente
+#
+# Estrutura:
+#   "termo_em_ingles": "termo_em_portugues (forçado)"
+
+"machine learning": "aprendizado de máquina"
+"deep learning": "aprendizado profundo"
+"neural network": "rede neural"
+"pipeline": "pipeline"
+"dataset": "conjunto de dados"
+"CPU": "CPU"
+"GPU": "GPU"

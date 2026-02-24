@@ -1,0 +1,180 @@
+# ============================================================
+# Config padrão do projeto
+# ============================================================
+
+source_lang: "en"        # "en" ou "auto" (LibreTranslate suporta "auto")
+# target_lang interno:
+# - "pb" = PT-BR (preferido)
+# - "pt" = PT (Portugal)
+target_lang: "pb"
+
+dpi: 300                 # 150-250 costuma ser bom. 300 = melhor OCR mas mais lento / arquivos maiores
+
+pipeline:
+  min_text_chars_native: 40   # heurística p/ detectar se tem texto nativo
+  iou_threshold: 0.20         # para filtrar OCR duplicado sobre texto nativo
+  resume: true                # reaproveita páginas já geradas em work/out_pages
+  # Quando true, o resume só pula páginas cuja execução anterior terminou com status "ok".
+  # Isso evita "pular" páginas geradas em modo fallback (ex.: quando o OCR/tradução falharam).
+  resume_success_only: true
+  # Bump esta string para forçar novo workdir/cache ao atualizar o projeto
+  cache_version: "0.3.6"
+
+  # Robustez: se o tradutor cair/travar, não deixe o pipeline finalizar silenciosamente
+  # com um PDF sem tradução. Se houver muitas falhas de tradução seguidas, aborta.
+  abort_on_translate_errors: true
+  max_translate_failures_consecutive: 3
+  max_translate_failures_total: 10
+
+  # Segurança: ao final, se NENHUMA página teve blocos realmente traduzidos (changed_blocks=0 em todas),
+  # falha o processo (para evitar "PDF final não traduzido").
+  fail_if_zero_translated_pages: true
+
+  # Qualidade e auditoria
+  retranslate_unchanged: true
+  retranslate_unchanged_min_chars: 12
+  retranslate_unchanged_max_chars: 800
+  retranslate_unchanged_max_blocks_per_page: 250
+  retranslate_unchanged_entity_mode: "relaxed"  # default | relaxed
+
+  qa_scan: true
+  qa_fail_on_zxq: true
+  qa_unchanged_ratio_warn: 0.85
+  qa_unchanged_min_chars: 300
+  keep_work: true             # mantém work/ (logs, cache, páginas) ao final
+  log_blocks: false           # true = inclui lista de blocos no JSON de log (útil p/ debug, gera logs maiores)
+
+  # Ajustes de performance do cache (bom para PDFs grandes: 500+ páginas)
+  cache_memory_max_entries: 20000
+  cache_commit_every: 50
+
+ocr:
+  lang: "eng"            # OCR do PDF em inglês: "eng". Pode usar "eng+por" se tiver misto
+  oem: 3
+  psm: 6
+  # psm (Page Segmentation Mode) do Tesseract:
+  # - scanned: texto corrido -> 6
+  # - images:  texto esparso em diagramas -> 11 (costuma detectar melhor labels espalhados)
+  psm_scanned: 6
+  psm_images: 11
+  min_confidence: 40
+  timeout_sec: 180        # timeout do Tesseract por página (seg). Use para evitar travamentos em páginas difíceis.
+  translate_images: true  # OCR "por cima" da página para pegar texto dentro de figuras/imagens
+  preprocess: false       # true pode ajudar OCR em scans ruins, mas pode piorar em outros
+  mask_pad_pt: 1.0        # quando mascarar texto nativo para OCR em imagens, expande bbox p/ cobrir antialias
+
+  # Agrupamento do OCR:
+  # - scanned: agrupa por parágrafo (menos blocos, melhor para texto corrido)
+  # - images:  agrupa por linha (evita bbox gigantes em diagramas/figuras)
+  group_mode_scanned: "paragraph"
+  group_mode_images: "line"
+
+  # Para imagens/diagramas, além da bbox do bloco,
+  # guarda as bboxes por palavra (Tesseract image_to_data) e usa essas
+  # sub-bboxes para "apagar" o texto original com precisão.
+  # Resultado: menos áreas grandes cobertas/"lacunas" em figuras.
+  word_boxes_for_images: true
+
+  # Filtra ruídos comuns do OCR em diagramas (ex.: © ® □ e callouts A/B/C).
+  filter_noise: true
+
+  # Proteção: se um bloco OCR (em modo images) ocupar > X% da página, ele é ignorado
+  # para evitar grandes "caixas brancas" no overlay.
+  translate_images_max_block_area_ratio: 0.15
+
+  # Para "linhas" de OCR com palavras muito afastadas (diagramas), clusterizar em subgrupos
+  cluster_sparse_lines: true
+  cluster_gap_factor: 2.5
+
+translator:
+  # provider:
+  # - opusmt: roda local via HuggingFace (Marian/OPUS-MT) — recomendado p/ qualidade sem Docker
+  # - libretranslate: servidor HTTP (pode rodar via Docker)
+  # - translategemma: servidor vLLM via Docker (mais pesado)
+  # - mymemory: API gratuita com limites
+  # - dummy: para debug
+  provider: "opusmt"
+
+  # --------------------------
+  # Opus-MT (Helsinki-NLP)
+  # --------------------------
+  # Modelo multi-alvo en->pt com token de idioma no INÍCIO do texto:
+  # - >>pob<< = Português do Brasil (PT-BR)
+  # - >>por<< = Português (geral/PT-PT)
+  # Fonte: model card do Hugging Face.
+  opusmt_model: "Helsinki-NLP/opus-mt-tc-big-en-pt"
+  opusmt_target_token_ptbr: ">>pob<<"
+  opusmt_target_token_ptpt: ">>por<<"
+  opusmt_device: "auto"           # auto | cpu | cuda
+  opusmt_num_beams: 4              # mais beams = melhor qualidade / mais lento
+  opusmt_batch_size: 4
+  opusmt_max_input_tokens: 384     # segurança p/ evitar estourar contexto
+  opusmt_max_new_tokens: 512
+  opusmt_fp16: false               # true apenas se usar GPU/cuda
+  opusmt_hf_cache_dir: ""          # vazio = cache padrão do HF
+
+  # --------------------------
+  # LibreTranslate (opcional)
+  # --------------------------
+  libretranslate_url: "http://127.0.0.1:5000"
+  libretranslate_api_key: ""      # em self-host normalmente vazio
+
+  # timeouts (seg)
+  timeout_sec: 120
+
+  # Segurança: antes de processar 500+ páginas, faz um pequeno teste de tradução
+  preflight_test: true
+  preflight_text: "This is a translation test."
+
+  mymemory_email: ""              # se usar MyMemory, recomendo preencher (aumenta limite diário)
+  glossary_path: "glossary.yaml"  # opcional: crie um glossário para forçar termos
+
+  # Performance: traduz vários blocos por request (reduz overhead em HTTP).
+  batch_mode: "auto"              # auto | on | off
+
+  # Proteção de entidades antes da tradução:
+  # - default: protege números de forma ampla (mais "seguro", porém pode ficar mais "robótico")
+  # - relaxed: protege apenas padrões técnicos (unidades/códigos), tende a melhorar a fluência
+  # - none: sem proteção (use com cuidado)
+  entity_mode: "relaxed"          # default | relaxed | none
+
+  # --------------------------
+  # TranslateGemma (opcional, mais pesado)
+  # --------------------------
+  translategemma_url: "http://127.0.0.1:12434/engines/v1"
+  translategemma_model: "aistaging/translategemma-vllm:27B"
+  translategemma_timeout_sec: 120
+  translategemma_api_key: ""
+
+render:
+  # Opção 1 (recomendado p/ qualidade): `pdf_overlay`
+  # Rasteriza o fundo (remove camada de texto original) e desenha o texto traduzido por cima.
+  mode: "pdf_overlay"     # pdf_overlay | pdf_overlay_original | raster
+  image_format: "jpg"     # jpg ou png (png = maior, mas sem artefatos)
+  jpg_quality: 90          # 60-90. Maior = melhor qualidade / maior tamanho
+  font_path: "assets/fonts/DejaVuSans.ttf"
+  font_min_size: 6
+  font_max_size: 14
+
+  # pad_pt: "padding" interno para a caixa de texto (não encosta nas bordas).
+  pad_pt: 1.0
+
+  # cover_pad_pt: expande a caixa de cobertura para esconder "vazamentos" do texto original.
+  cover_pad_pt: 0.5
+  cover_blend_to_white: 0.90
+
+  # Ajustes específicos para OCR em figuras/diagramas:
+  cover_pad_pt_ocr: 0.25
+  cover_opacity_native: 1.0
+  cover_opacity_ocr: 0.85
+  max_cover_area_ratio_native: 0.50
+  max_cover_area_ratio_ocr: 0.15
+
+  # Cobertura de texto nativo: "block" (caixa inteira) | "line" (por linha) | "word" (por palavra)
+  native_cover_mode: "line"
+
+  # Para blocos nativos "esparsos" (diagramas), dividir em sub-blocos menores para evitar caixas enormes
+  split_sparse_native_blocks: true
+  sparse_native_min_area_ratio: 0.04
+  sparse_native_max_chars: 120
+  sparse_cluster_gap_factor: 2.5

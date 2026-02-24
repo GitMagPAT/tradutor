@@ -1,0 +1,14 @@
+pymupdf>=1.24.0
+pillow>=10.0.0
+pytesseract>=0.3.10
+requests>=2.31.0
+tenacity>=8.2.3
+pyyaml>=6.0.1
+tqdm>=4.66.0
+python-dotenv>=1.0.1
+
+# Tradução local (Opus-MT / Marian via HuggingFace)
+# Obs.: o PyTorch (torch) é instalado separadamente no PowerShell para garantir wheel CPU estável no Windows.
+transformers>=4.40.0
+sentencepiece>=0.2.0
+sacremoses>=0.1.1
