@@ -151,6 +151,24 @@ function Ensure-TorchCpu($Py) {
   }
 }
 
+function Assert-NoMergeConflicts($RootPath) {
+  # Baixo risco: evita rodar com arquivo quebrado por conflito Git (<<<<<<< ======= >>>>>>>)
+  $targets = @(
+    (Join-Path $RootPath "app\*.py"),
+    (Join-Path $RootPath "config.yaml")
+  )
+  $bad = @()
+  foreach ($pat in $targets) {
+    Get-ChildItem -Path $pat -ErrorAction SilentlyContinue | ForEach-Object {
+      $m = Select-String -Path $_.FullName -Pattern "^<<<<<<< |^=======|^>>>>>>> " -ErrorAction SilentlyContinue
+      if ($m) { $bad += $_.FullName }
+    }
+  }
+  if ($bad.Count -gt 0) {
+    throw "Foram encontrados marcadores de conflito Git em: $($bad -join ', '). Resolva os conflitos antes de executar a tradução."
+  }
+}
+
 function Add-ToPath($Dir, [bool]$Persist) {
   if (-not (Test-Path $Dir)) { return }
   if ($env:PATH -notlike "*$Dir*") {
@@ -492,6 +510,8 @@ if ($Translator -eq "translategemma") {
 if ($Translator -eq "libretranslate") {
   Ensure-LibreTranslate-Docker $LibreTranslateUrl
 }
+
+Assert-NoMergeConflicts $ROOT
 
 Write-Step "Rodando pipeline de tradução..."
 $cmd = @(
