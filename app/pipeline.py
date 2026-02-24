@@ -69,42 +69,6 @@ def _effective_max_cover_area_ratio_native(has_images: bool, configured_ratio: f
     if auto_unlimited_no_images and (not has_images):
         return 1.0
     return ratio
-
-
-def _resolve_render_mode_for_page(configured_render_mode: str, has_images: bool, auto_rasterize_text_pages: bool) -> str:
-    """Define modo de render efetivo por página.
-
-    Em páginas textuais (sem imagens), `pdf_overlay_original` pode deixar sombra do
-    texto nativo em alguns PDFs. Neste caso, usar `pdf_overlay` elimina a camada
-    textual original e reduz mistura EN+PT.
-    """
-    mode = str(configured_render_mode or "pdf_overlay").strip().lower()
-    if mode not in ("pdf_overlay", "pdf_overlay_original", "raster"):
-        mode = "pdf_overlay"
-
-    if auto_rasterize_text_pages and mode == "pdf_overlay_original" and (not has_images):
-        return "pdf_overlay"
-    return mode
-
-
-def _looks_english_heavy(text: str) -> bool:
-    """Heurística simples para detectar saída ainda em inglês."""
-    t = f" {(text or '').lower()} "
-    if len(t.strip()) < 20:
-        return False
-
-    en_hits = 0
-    for token in (" the ", " and ", " of ", " to ", " with ", " for ", " in ", " from ", " that "):
-        if token in t:
-            en_hits += 1
-
-    pt_hits = 0
-    for token in (" de ", " e ", " para ", " com ", " que ", " não ", " uma ", " os ", " as "):
-        if token in t:
-            pt_hits += 1
-
-    return en_hits >= 2 and en_hits > pt_hits
-
 def _filter_ocr_duplicates(
     ocr_blocks: List[TextBlock],
     native_blocks: List[TextBlock],
@@ -438,7 +402,6 @@ def run_pipeline(
     max_cover_area_ratio_native = float(render_cfg.get("max_cover_area_ratio_native", 0.50))
     max_cover_area_ratio_ocr = float(render_cfg.get("max_cover_area_ratio_ocr", 0.15))
     auto_unlimited_native_cover_on_text_pages = bool(render_cfg.get("auto_unlimited_native_cover_on_text_pages", True))
-    auto_rasterize_text_pages_in_overlay_original = bool(render_cfg.get("auto_rasterize_text_pages_in_overlay_original", True))
 
     # Tesseract via env (o PowerShell normalmente seta)
     import os
@@ -842,50 +805,6 @@ def run_pipeline(
                     else:
                         timings["translate_retry_sec"] = 0.0
 
-                    # Retry adicional para saídas ainda muito "english-heavy".
-                    english_retry_candidates: List[int] = []
-                    english_retry_changed = 0
-                    if retry_english_heavy:
-                        for i0, (b0, tr_txt) in enumerate(zip(blocks_all, translated_texts)):
-                            if len(english_retry_candidates) >= retry_english_heavy_max_blocks:
-                                break
-                            if _norm(tr_txt) == _norm(b0.text):
-                                continue  # já tratado no retry_unchanged
-                            if _looks_english_heavy(tr_txt):
-                                english_retry_candidates.append(i0)
-
-                    if english_retry_candidates:
-                        t_retry_en0 = time.time()
-                        try:
-                            retry_texts_en = [blocks_all[i].text for i in english_retry_candidates]
-                            retry_provider_id_en = f"{provider_id}|retry_en|{retry_entity_mode}"
-                            retry_translations_en = translate_many_with_cache(
-                                cache=cache,
-                                translator=translator,
-                                texts=retry_texts_en,
-                                source_lang=source_lang,
-                                target_lang=target_lang,
-                                max_chars_per_request=max_chars_per_request,
-                                provider_id=retry_provider_id_en,
-                                glossary=glossary,
-                                batch_mode=batch_mode,
-                                entity_mode=retry_entity_mode,
-                                do_not_translate_terms=do_not_translate_terms,
-                            )
-                            for idx0, new_tr in zip(english_retry_candidates, retry_translations_en):
-                                if _norm(new_tr) != _norm(translated_texts[idx0]) and not _looks_english_heavy(new_tr):
-                                    translated_texts[idx0] = new_tr
-                                    english_retry_changed += 1
-                        except Exception as e_retry_en:
-                            info["warnings"].append("retry_english_heavy_failed")
-                            info["errors"].append(f"retry_english_heavy_failed: {repr(e_retry_en)}")
-                        timings["translate_retry_english_sec"] = round(time.time() - t_retry_en0, 3)
-                    else:
-                        timings["translate_retry_english_sec"] = 0.0
-
-                    info["retry_english_heavy_candidates"] = len(english_retry_candidates)
-                    info["retry_english_heavy_changed"] = english_retry_changed
-
                     # Pós-edição opcional com LLM (ex.: Ministral) para fluência/consistência.
                     if llm_post_edit_enabled and translated_texts:
                         pe_candidates = []
@@ -973,14 +892,7 @@ def run_pipeline(
                     configured_ratio=float(max_cover_area_ratio_native),
                     auto_unlimited_no_images=auto_unlimited_native_cover_on_text_pages,
                 )
-                render_mode_page = _resolve_render_mode_for_page(
-                    configured_render_mode=render_mode,
-                    has_images=bool(has_images),
-                    auto_rasterize_text_pages=auto_rasterize_text_pages_in_overlay_original,
-                )
-                info["render_mode_effective"] = render_mode_page
-
-                if render_mode_page == "pdf_overlay":
+                if render_mode == "pdf_overlay":
                     create_translated_page_pdf_overlay(
                         page_rect=page_rect,
                         bg_img=bg_img,
