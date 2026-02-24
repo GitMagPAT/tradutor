@@ -180,8 +180,7 @@ render:
   # Cobertura de texto nativo: "block" (caixa inteira) | "line" (por linha) | "word" (por palavra)
   native_cover_mode: "line"
   auto_native_cover_mode: true  # sem imagens => usa block para cobrir melhor texto original
-
-  auto_rasterize_text_pages_in_overlay_original: true  # sem imagens + pdf_overlay_original => troca para pdf_overlay (reduz sombra EN/PT)
+        main
 
   # Para blocos nativos "esparsos" (diagramas), dividir em sub-blocos menores para evitar caixas enormes
   split_sparse_native_blocks: true
