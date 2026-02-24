@@ -23,7 +23,7 @@ from .render import (
     pil_to_bytes,
     render_page_to_image,
 )
-from .translate import build_translator, load_glossary, translate_many_with_cache, lang_for_translator
+from .translate import build_translator, load_glossary, load_do_not_translate, translate_many_with_cache, lang_for_translator
 from .utils import rect_iou, stable_hash, file_signature
 
 
@@ -313,12 +313,23 @@ def run_pipeline(
     except Exception:
         glossary = {}
 
-    # Para o cache: se houver glossário, inclui um hash curto para não misturar resultados
+    do_not_translate_path = translator_cfg.get("do_not_translate_path", "do_not_translate.yaml")
+    do_not_translate_terms: List[str] = []
+    try:
+        if do_not_translate_path:
+            do_not_translate_terms = load_do_not_translate(Path.cwd() / str(do_not_translate_path))
+    except Exception:
+        do_not_translate_terms = []
+
+    # Para o cache: se houver glossário/listas, inclui hash curto para não misturar resultados
     glossary_hash = ""
     if glossary:
         glossary_hash = stable_hash(json.dumps(glossary, sort_keys=True, ensure_ascii=False))[:8]
+    dnt_hash = ""
+    if do_not_translate_terms:
+        dnt_hash = stable_hash(json.dumps(sorted(do_not_translate_terms), ensure_ascii=False))[:8]
     cache_version = str(cfg.get("pipeline", {}).get("cache_version", PROJECT_VERSION)).strip()
-    provider_id = "{}|g:{}|em:{}|cv:{}|pv:{}".format(translator.provider_name, (glossary_hash or ""), entity_mode, cache_version, PROJECT_VERSION)
+    provider_id = "{}|g:{}|dnt:{}|em:{}|cv:{}|pv:{}".format(translator.provider_name, (glossary_hash or ""), (dnt_hash or ""), entity_mode, cache_version, PROJECT_VERSION)
 
     render_cfg = cfg.get("render", {}) or {}
     render_mode = str(render_cfg.get("mode", "pdf_overlay")).strip().lower()
@@ -608,6 +619,7 @@ def run_pipeline(
                             provider_id=provider_id,
                             glossary=glossary,
                             entity_mode=entity_mode,
+                            do_not_translate_terms=do_not_translate_terms,
                             batch_mode=batch_mode,
                         )
                         # Se chegou aqui, a tradução respondeu.
@@ -714,6 +726,7 @@ def run_pipeline(
                                 glossary=glossary,
                                 batch_mode=batch_mode,
                                 entity_mode=retry_entity_mode,
+                                do_not_translate_terms=do_not_translate_terms,
                             )
 
                             for idx0, new_tr in zip(retry_candidates, retry_translations):

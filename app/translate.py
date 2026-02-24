@@ -34,7 +34,7 @@ ENTITY_PATTERNS_DEFAULT = [
     r"\b\d{1,4}[/-]\d{1,2}[/-]\d{1,4}\b",  # datas simples
     r"\b\d+(?:[\.,]\d+)?\b",  # números (agressivo)
     r"\b[A-Z]{2,}\d+\b",  # códigos tipo ABC123
-    r"\b\d+(?:[\.,]\d+)?\s?(?:kg|g|mg|lb|m|cm|mm|km|mi|°C|°F|%)\b",
+    r"\b\d+(?:[\.,]\d+)?\s?(?:kg|g|mg|lb|t|m|cm|mm|km|mi|in|ft|V|kV|mV|A|mA|Hz|kHz|MHz|rpm|N\.?m|N·m|Pa|kPa|MPa|bar|psi|°C|°F|%)\b",
     _LEADER_DOTS_PATTERN,
 ]
 
@@ -45,7 +45,7 @@ ENTITY_PATTERNS_RELAXED = [
     r"\b\w+@\w+\.[A-Za-z]{2,}\b",
     r"\b\d{1,4}[/-]\d{1,2}[/-]\d{1,4}\b",  # datas simples
     r"\b[A-Z]{2,}\d+\b",  # códigos tipo ABC123
-    r"\b\d+(?:[\.,]\d+)?\s?(?:kg|g|mg|lb|m|cm|mm|km|mi|°C|°F|%)\b",
+    r"\b\d+(?:[\.,]\d+)?\s?(?:kg|g|mg|lb|t|m|cm|mm|km|mi|in|ft|V|kV|mV|A|mA|Hz|kHz|MHz|rpm|N\.?m|N·m|Pa|kPa|MPa|bar|psi|°C|°F|%)\b",
     _LEADER_DOTS_PATTERN,
 ]
 
@@ -332,6 +332,57 @@ def load_glossary(glossary_path: Path) -> Dict[str, str]:
             continue
         out[str(k)] = str(v)
     return out
+
+
+def load_do_not_translate(path: Path) -> List[str]:
+    """Carrega lista de termos que não devem ser traduzidos (.yaml/.yml/.json/.txt)."""
+    p = Path(path)
+    if not p.exists():
+        return []
+
+    raw = p.read_text(encoding="utf-8")
+    if p.suffix.lower() in (".yaml", ".yml"):
+        import yaml
+        data = yaml.safe_load(raw) or []
+    elif p.suffix.lower() == ".json":
+        data = json.loads(raw) or []
+    else:
+        data = [ln.strip() for ln in raw.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+
+    if isinstance(data, dict):
+        data = data.get("terms") or []
+
+    out: List[str] = []
+    if isinstance(data, list):
+        for it in data:
+            t = str(it or "").strip()
+            if t:
+                out.append(t)
+    return out
+
+
+def protect_do_not_translate_terms(text: str, terms: List[str], token_prefix: str = "") -> Tuple[str, Dict[str, str]]:
+    """Protege termos que devem permanecer idênticos no resultado final."""
+    if not terms:
+        return text or "", {}
+
+    mapping: Dict[str, str] = {}
+    protected = text or ""
+    idx = 0
+
+    for term in sorted({t for t in terms if str(t).strip()}, key=len, reverse=True):
+        token = _make_token("ENT", token_prefix, idx)
+        if re.match(r"^[A-Za-z0-9_\-]+$", str(term)):
+            pattern = r"\b" + re.escape(str(term)) + r"\b"
+        else:
+            pattern = re.escape(str(term))
+        protected_new, n = re.subn(pattern, token, protected)
+        if n > 0:
+            protected = protected_new
+            mapping[token] = str(term)
+            idx += 1
+
+    return protected, mapping
 
 
 def protect_glossary_terms(text: str, glossary: Dict[str, str], token_prefix: str = "") -> Tuple[str, Dict[str, str]]:
@@ -748,6 +799,7 @@ def translate_with_cache(
     provider_id: Optional[str] = None,
     glossary: Optional[Dict[str, str]] = None,
     entity_mode: str = "default",
+    do_not_translate_terms: Optional[List[str]] = None,
 ) -> str:
     """Traduz com cache + chunking + proteção de entidades + glossário (opcional)."""
     text = (text or "").strip()
@@ -765,10 +817,13 @@ def translate_with_cache(
     if cached is not None:
         return cached
 
-    # 1) protege termos do glossário (força resultado final)
-    text2, gloss_map = protect_glossary_terms(text, glossary or {})
+    # 1) protege termos que não devem ser traduzidos
+    text1, dnt_map = protect_do_not_translate_terms(text, do_not_translate_terms or [])
 
-    # 2) protege entidades (números, urls, etc)
+    # 2) protege termos do glossário (força resultado final)
+    text2, gloss_map = protect_glossary_terms(text1, glossary or {})
+
+    # 3) protege entidades (números, urls, etc)
     protected, ent_map = protect_entities(text2, mode=entity_mode)
 
     # 3) quebra em chunks (por limite de API)
@@ -781,9 +836,10 @@ def translate_with_cache(
 
     translated = " ".join(translated_chunks).strip()
 
-    # 4) restaura entidades e glossário
+    # 4) restaura entidades, glossário e termos protegidos
     translated = restore_placeholders(translated, ent_map)
     translated = restore_placeholders(translated, gloss_map)
+    translated = restore_placeholders(translated, dnt_map)
 
     # 5) pequenos ajustes determinísticos (pontuação/whitespace)
     translated = postprocess_translation(translated, src=text)
@@ -885,6 +941,7 @@ def translate_many_with_cache(
     glossary: Optional[Dict[str, str]] = None,
     batch_mode: Union[str, bool, None] = "auto",
     entity_mode: str = "default",
+    do_not_translate_terms: Optional[List[str]] = None,
 ) -> List[str]:
     """Traduz uma lista de strings de forma eficiente.
 
@@ -961,6 +1018,7 @@ def translate_many_with_cache(
             provider_id=provider_key,
             glossary=glossary,
             entity_mode=entity_mode,
+            do_not_translate_terms=do_not_translate_terms,
         )
         for idx in by_text[t]:
             out[idx] = tr
@@ -981,6 +1039,7 @@ def translate_many_with_cache(
                 provider_id=provider_key,
                 glossary=glossary,
                 entity_mode=entity_mode,
+                do_not_translate_terms=do_not_translate_terms,
             )
             for idx in by_text[t]:
                 out[idx] = tr
@@ -1010,14 +1069,15 @@ def translate_many_with_cache(
     for b_idx, batch in enumerate(batches):
         # Protege glossário/entidades por segmento com prefixo único
         protected_texts: List[str] = []
-        maps: List[Tuple[Dict[str, str], Dict[str, str]]] = []
+        maps: List[Tuple[Dict[str, str], Dict[str, str], Dict[str, str]]] = []
 
         for s_idx, t in enumerate(batch):
             prefix = f"b{b_idx:03d}_s{s_idx:03d}_"
-            t1, gloss_map = protect_glossary_terms(t, glossary, token_prefix=prefix)
+            t0, dnt_map = protect_do_not_translate_terms(t, do_not_translate_terms or [], token_prefix=prefix)
+            t1, gloss_map = protect_glossary_terms(t0, glossary, token_prefix=prefix)
             t2, ent_map = protect_entities(t1, token_prefix=prefix, mode=entity_mode)
             protected_texts.append(t2)
-            maps.append((gloss_map, ent_map))
+            maps.append((dnt_map, gloss_map, ent_map))
 
         joined = sep.join(protected_texts)
 
@@ -1034,6 +1094,7 @@ def translate_many_with_cache(
                     provider_id=provider_key,
                     glossary=glossary,
                     entity_mode=entity_mode,
+                    do_not_translate_terms=do_not_translate_terms,
                 )
                 for idx in by_text[t]:
                     out[idx] = tr
@@ -1054,6 +1115,7 @@ def translate_many_with_cache(
                     provider_id=provider_key,
                     glossary=glossary,
                     entity_mode=entity_mode,
+                    do_not_translate_terms=do_not_translate_terms,
                 )
                 for idx in by_text[t]:
                     out[idx] = tr
@@ -1074,6 +1136,7 @@ def translate_many_with_cache(
                     provider_id=provider_key,
                     glossary=glossary,
                     entity_mode=entity_mode,
+                    do_not_translate_terms=do_not_translate_terms,
                 )
                 for idx in by_text[t]:
                     out[idx] = tr
@@ -1081,9 +1144,10 @@ def translate_many_with_cache(
 
         pairs: List[Tuple[str, str]] = []
         for i_seg, translated_seg in enumerate(parts):
-            gloss_map, ent_map = maps[i_seg]
+            dnt_map, gloss_map, ent_map = maps[i_seg]
             restored = restore_placeholders(translated_seg, ent_map)
             restored = restore_placeholders(restored, gloss_map)
+            restored = restore_placeholders(restored, dnt_map)
             src = batch[i_seg]
             restored = postprocess_translation(restored, src=src).strip()
             if target_lang_n == 'pb':

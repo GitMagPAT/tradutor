@@ -41,6 +41,8 @@ pipeline:
   qa_fail_on_zxq: true
   qa_unchanged_ratio_warn: 0.85
   qa_unchanged_min_chars: 300
+  qa_report_path: ""          # vazio = work/qa_report.json
+  qa_fail_score_threshold: 0   # 0 desliga gate por score; 1..100 habilita
   keep_work: true             # mantém work/ (logs, cache, páginas) ao final
   log_blocks: false           # true = inclui lista de blocos no JSON de log (útil p/ debug, gera logs maiores)
 
@@ -128,6 +130,7 @@ translator:
 
   mymemory_email: ""              # se usar MyMemory, recomendo preencher (aumenta limite diário)
   glossary_path: "glossary.yaml"  # opcional: crie um glossário para forçar termos
+  do_not_translate_path: "do_not_translate.yaml"  # termos/siglas/comandos que devem permanecer iguais
 
   # Performance: traduz vários blocos por request (reduz overhead em HTTP).
   batch_mode: "auto"              # auto | on | off
