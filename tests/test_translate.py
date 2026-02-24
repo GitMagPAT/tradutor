@@ -88,3 +88,25 @@ def test_postprocess_translation_fixes_punctuation_spacing() -> None:
     out = postprocess_translation(s)
     assert out == "Hello, world! This is a test."
 
+
+
+def test_do_not_translate_terms_are_preserved_with_dummy():
+    with tempfile.TemporaryDirectory() as td:
+        cache = TranslationCache(Path(td) / "cache.sqlite", memory_max_entries=100, commit_every=1)
+        tr = DummyTranslator()
+
+        out = translate_with_cache(
+            cache=cache,
+            translator=tr,
+            text="Use API_KEY in CLI mode",
+            source_lang="en",
+            target_lang="pt",
+            max_chars_per_request=1000,
+            provider_id="dummy",
+            glossary={"mode": "modo"},
+            do_not_translate_terms=["API_KEY", "CLI"],
+        )
+        assert "API_KEY" in out
+        assert "CLI" in out
+        assert "modo" in out
+        cache.close()

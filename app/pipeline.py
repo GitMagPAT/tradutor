@@ -23,8 +23,9 @@ from .render import (
     pil_to_bytes,
     render_page_to_image,
 )
-from .translate import build_translator, load_glossary, translate_many_with_cache, lang_for_translator
+from .translate import build_translator, load_glossary, load_do_not_translate, translate_many_with_cache, lang_for_translator
 from .utils import rect_iou, stable_hash, file_signature
+from .llm_assist import build_llm_assist_client, validate_post_edit_candidate
 
 
 class TranslatorFatalError(RuntimeError):
@@ -36,6 +37,73 @@ class TranslatorFatalError(RuntimeError):
     """
 
 
+
+
+
+def _resolve_native_cover_mode(has_images: bool, configured_mode: str, auto_mode: bool) -> str:
+    """Resolve modo de cobertura de texto nativo (baixo risco).
+
+    - Em páginas sem imagens, usar `block` reduz vazamento visual do texto original.
+    - Em páginas com imagens/diagramas, manter modo configurado (`line`/`word`) evita
+      apagar traços finos das figuras.
+    """
+    mode = str(configured_mode or "line").strip().lower()
+    if mode not in ("block", "line", "word"):
+        mode = "line"
+    if auto_mode and (not has_images):
+        return "block"
+    return mode
+
+
+def _effective_max_cover_area_ratio_native(has_images: bool, configured_ratio: float, auto_unlimited_no_images: bool) -> float:
+    """Define limite de cobertura nativa por página (baixo risco).
+
+    Problema observado: em páginas sem imagens, um bloco nativo grande pode ter
+    cobertura desativada pelo limite de área e causar mistura EN+PT no resultado.
+    Nesses casos, é mais seguro permitir cobertura ampla.
+    """
+    try:
+        ratio = float(configured_ratio)
+    except Exception:
+        ratio = 0.50
+    if auto_unlimited_no_images and (not has_images):
+        return 1.0
+    return ratio
+
+
+def _resolve_render_mode_for_page(configured_render_mode: str, has_images: bool, auto_rasterize_text_pages: bool) -> str:
+    """Define modo de render efetivo por página.
+
+    Em páginas textuais (sem imagens), `pdf_overlay_original` pode deixar sombra do
+    texto nativo em alguns PDFs. Neste caso, usar `pdf_overlay` elimina a camada
+    textual original e reduz mistura EN+PT.
+    """
+    mode = str(configured_render_mode or "pdf_overlay").strip().lower()
+    if mode not in ("pdf_overlay", "pdf_overlay_original", "raster"):
+        mode = "pdf_overlay"
+
+    if auto_rasterize_text_pages and mode == "pdf_overlay_original" and (not has_images):
+        return "pdf_overlay"
+    return mode
+
+
+def _looks_english_heavy(text: str) -> bool:
+    """Heurística simples para detectar saída ainda em inglês."""
+    t = f" {(text or '').lower()} "
+    if len(t.strip()) < 20:
+        return False
+
+    en_hits = 0
+    for token in (" the ", " and ", " of ", " to ", " with ", " for ", " in ", " from ", " that "):
+        if token in t:
+            en_hits += 1
+
+    pt_hits = 0
+    for token in (" de ", " e ", " para ", " com ", " que ", " não ", " uma ", " os ", " as "):
+        if token in t:
+            pt_hits += 1
+
+    return en_hits >= 2 and en_hits > pt_hits
 
 def _filter_ocr_duplicates(
     ocr_blocks: List[TextBlock],
@@ -60,21 +128,36 @@ def _filter_ocr_duplicates(
 
 def _merge_page_pdfs(page_pdfs: List[Path], out_pdf: Path) -> None:
     out_doc = fitz.open()
-    for p in page_pdfs:
-        if not Path(p).exists():
-            continue
-        src = fitz.open(str(p))
-        out_doc.insert_pdf(src)
-        src.close()
-    # Otimiza tamanho do arquivo final (baixo risco)
-    out_doc.save(
-        str(out_pdf),
-        garbage=4,
-        deflate=True,
-        deflate_images=True,
-        deflate_fonts=True,
-    )
-    out_doc.close()
+    tmp_out = out_pdf.with_suffix(out_pdf.suffix + ".tmp")
+    try:
+        for p in page_pdfs:
+            if not Path(p).exists():
+                continue
+            src = fitz.open(str(p))
+            out_doc.insert_pdf(src)
+            src.close()
+
+        if tmp_out.exists():
+            tmp_out.unlink()
+
+        # Otimiza tamanho do arquivo final (baixo risco)
+        out_doc.save(
+            str(tmp_out),
+            garbage=4,
+            deflate=True,
+            deflate_images=True,
+            deflate_fonts=True,
+        )
+    finally:
+        out_doc.close()
+
+    try:
+        tmp_out.replace(out_pdf)
+    except PermissionError as exc:
+        raise RuntimeError(
+            f"Não foi possível sobrescrever o PDF de saída '{out_pdf}'. "
+            "Feche o arquivo no visualizador (Adobe/Edge/etc.) e tente novamente."
+        ) from exc
 
 
 def _preserve_pdf_features(src_pdf: Path, out_pdf: Path) -> None:
@@ -256,6 +339,13 @@ def run_pipeline(
     cache = TranslationCache(workdir / "cache.sqlite", memory_max_entries=cache_mem, commit_every=cache_commit)
 
     translator = build_translator(cfg)
+    llm_assist = build_llm_assist_client(cfg)
+
+    llm_cfg = cfg.get("llm_assist", {}) or {}
+    llm_post_edit_enabled = bool(llm_assist) and bool(llm_cfg.get("post_edit_enabled", False))
+    llm_post_edit_min_chars = int(llm_cfg.get("post_edit_min_chars", 30))
+    llm_post_edit_max_chars = int(llm_cfg.get("post_edit_max_chars", 700))
+    llm_post_edit_max_blocks_per_page = int(llm_cfg.get("post_edit_max_blocks_per_page", 30))
 
     source_lang = str(cfg.get("source_lang", "en"))
     target_lang = str(cfg.get("target_lang", "pt"))
@@ -313,12 +403,23 @@ def run_pipeline(
     except Exception:
         glossary = {}
 
-    # Para o cache: se houver glossário, inclui um hash curto para não misturar resultados
+    do_not_translate_path = translator_cfg.get("do_not_translate_path", "do_not_translate.yaml")
+    do_not_translate_terms: List[str] = []
+    try:
+        if do_not_translate_path:
+            do_not_translate_terms = load_do_not_translate(Path.cwd() / str(do_not_translate_path))
+    except Exception:
+        do_not_translate_terms = []
+
+    # Para o cache: se houver glossário/listas, inclui hash curto para não misturar resultados
     glossary_hash = ""
     if glossary:
         glossary_hash = stable_hash(json.dumps(glossary, sort_keys=True, ensure_ascii=False))[:8]
+    dnt_hash = ""
+    if do_not_translate_terms:
+        dnt_hash = stable_hash(json.dumps(sorted(do_not_translate_terms), ensure_ascii=False))[:8]
     cache_version = str(cfg.get("pipeline", {}).get("cache_version", PROJECT_VERSION)).strip()
-    provider_id = "{}|g:{}|em:{}|cv:{}|pv:{}".format(translator.provider_name, (glossary_hash or ""), entity_mode, cache_version, PROJECT_VERSION)
+    provider_id = "{}|g:{}|dnt:{}|em:{}|cv:{}|pv:{}".format(translator.provider_name, (glossary_hash or ""), (dnt_hash or ""), entity_mode, cache_version, PROJECT_VERSION)
 
     render_cfg = cfg.get("render", {}) or {}
     render_mode = str(render_cfg.get("mode", "pdf_overlay")).strip().lower()
@@ -336,6 +437,8 @@ def run_pipeline(
     cover_opacity_ocr = float(render_cfg.get("cover_opacity_ocr", 0.85))
     max_cover_area_ratio_native = float(render_cfg.get("max_cover_area_ratio_native", 0.50))
     max_cover_area_ratio_ocr = float(render_cfg.get("max_cover_area_ratio_ocr", 0.15))
+    auto_unlimited_native_cover_on_text_pages = bool(render_cfg.get("auto_unlimited_native_cover_on_text_pages", True))
+    auto_rasterize_text_pages_in_overlay_original = bool(render_cfg.get("auto_rasterize_text_pages_in_overlay_original", True))
 
     # Tesseract via env (o PowerShell normalmente seta)
     import os
@@ -462,7 +565,13 @@ def run_pipeline(
                 # 1) Extração nativa
                 if page_type in (PageType.NATIVE, PageType.HYBRID):
                     t_ext0 = time.time()
-                    native_cover_mode = cfg.get("render", {}).get("native_cover_mode", "line")
+                    native_cover_mode_cfg = cfg.get("render", {}).get("native_cover_mode", "line")
+                    auto_native_cover_mode = bool(cfg.get("render", {}).get("auto_native_cover_mode", True))
+                    native_cover_mode = _resolve_native_cover_mode(
+                        has_images=bool(has_images),
+                        configured_mode=str(native_cover_mode_cfg),
+                        auto_mode=auto_native_cover_mode,
+                    )
                     native_blocks = extract_native_text_blocks(
                         page,
                         page_number=page_number,
@@ -608,6 +717,7 @@ def run_pipeline(
                             provider_id=provider_id,
                             glossary=glossary,
                             entity_mode=entity_mode,
+                            do_not_translate_terms=do_not_translate_terms,
                             batch_mode=batch_mode,
                         )
                         # Se chegou aqui, a tradução respondeu.
@@ -661,6 +771,8 @@ def run_pipeline(
                     retry_max_chars = int(pipe_cfg.get("retranslate_unchanged_max_chars", 800))
                     retry_max_blocks = int(pipe_cfg.get("retranslate_unchanged_max_blocks_per_page", 250))
                     retry_entity_mode = str(pipe_cfg.get("retranslate_unchanged_entity_mode", "relaxed") or "relaxed")
+                    retry_english_heavy = bool(pipe_cfg.get("retranslate_english_heavy", True))
+                    retry_english_heavy_max_blocks = int(pipe_cfg.get("retranslate_english_heavy_max_blocks_per_page", 80))
 
                     retry_candidates: List[int] = []
 
@@ -714,6 +826,7 @@ def run_pipeline(
                                 glossary=glossary,
                                 batch_mode=batch_mode,
                                 entity_mode=retry_entity_mode,
+                                do_not_translate_terms=do_not_translate_terms,
                             )
 
                             for idx0, new_tr in zip(retry_candidates, retry_translations):
@@ -728,6 +841,87 @@ def run_pipeline(
                         timings["translate_retry_sec"] = round(time.time() - t_retry0, 3)
                     else:
                         timings["translate_retry_sec"] = 0.0
+
+                    # Retry adicional para saídas ainda muito "english-heavy".
+                    english_retry_candidates: List[int] = []
+                    english_retry_changed = 0
+                    if retry_english_heavy:
+                        for i0, (b0, tr_txt) in enumerate(zip(blocks_all, translated_texts)):
+                            if len(english_retry_candidates) >= retry_english_heavy_max_blocks:
+                                break
+                            if _norm(tr_txt) == _norm(b0.text):
+                                continue  # já tratado no retry_unchanged
+                            if _looks_english_heavy(tr_txt):
+                                english_retry_candidates.append(i0)
+
+                    if english_retry_candidates:
+                        t_retry_en0 = time.time()
+                        try:
+                            retry_texts_en = [blocks_all[i].text for i in english_retry_candidates]
+                            retry_provider_id_en = f"{provider_id}|retry_en|{retry_entity_mode}"
+                            retry_translations_en = translate_many_with_cache(
+                                cache=cache,
+                                translator=translator,
+                                texts=retry_texts_en,
+                                source_lang=source_lang,
+                                target_lang=target_lang,
+                                max_chars_per_request=max_chars_per_request,
+                                provider_id=retry_provider_id_en,
+                                glossary=glossary,
+                                batch_mode=batch_mode,
+                                entity_mode=retry_entity_mode,
+                                do_not_translate_terms=do_not_translate_terms,
+                            )
+                            for idx0, new_tr in zip(english_retry_candidates, retry_translations_en):
+                                if _norm(new_tr) != _norm(translated_texts[idx0]) and not _looks_english_heavy(new_tr):
+                                    translated_texts[idx0] = new_tr
+                                    english_retry_changed += 1
+                        except Exception as e_retry_en:
+                            info["warnings"].append("retry_english_heavy_failed")
+                            info["errors"].append(f"retry_english_heavy_failed: {repr(e_retry_en)}")
+                        timings["translate_retry_english_sec"] = round(time.time() - t_retry_en0, 3)
+                    else:
+                        timings["translate_retry_english_sec"] = 0.0
+
+                    info["retry_english_heavy_candidates"] = len(english_retry_candidates)
+                    info["retry_english_heavy_changed"] = english_retry_changed
+
+                    # Pós-edição opcional com LLM (ex.: Ministral) para fluência/consistência.
+                    if llm_post_edit_enabled and translated_texts:
+                        pe_candidates = []
+                        for i0, tr_txt in enumerate(translated_texts):
+                            txt_len = len((tr_txt or "").strip())
+                            if txt_len < llm_post_edit_min_chars or txt_len > llm_post_edit_max_chars:
+                                continue
+                            if len(pe_candidates) >= llm_post_edit_max_blocks_per_page:
+                                break
+                            pe_candidates.append(i0)
+
+                        pe_changed = 0
+                        pe_errors = 0
+                        for idx0 in pe_candidates:
+                            try:
+                                new_txt = llm_assist.post_edit_block(blocks_all[idx0].text, translated_texts[idx0]) if llm_assist else translated_texts[idx0]
+                            except Exception:
+                                pe_errors += 1
+                                continue
+                            if (new_txt or "").strip() and new_txt.strip() != (translated_texts[idx0] or "").strip():
+                                ok_edit, reasons = validate_post_edit_candidate(translated_texts[idx0], new_txt)
+                                if ok_edit:
+                                    translated_texts[idx0] = new_txt.strip()
+                                    pe_changed += 1
+                                else:
+                                    info["warnings"].append("llm_post_edit_rejected_guard")
+                                    info.setdefault("llm_post_edit_rejected_reasons", []).append({
+                                        "block_id": blocks_all[idx0].block_id,
+                                        "reasons": reasons,
+                                    })
+
+                        info["llm_post_edit_candidates"] = len(pe_candidates)
+                        info["llm_post_edit_changed"] = int(pe_changed)
+                        if pe_errors:
+                            info["warnings"].append("llm_post_edit_partial_fail")
+                            info["llm_post_edit_errors"] = int(pe_errors)
 
                     changed, unchanged = _count_changed_unchanged(blocks_all, translated_texts)
 
@@ -774,7 +968,19 @@ def run_pipeline(
 
                 # 6) Render output page
                 t_rend0 = time.time()
-                if render_mode == "pdf_overlay":
+                eff_max_cover_area_ratio_native = _effective_max_cover_area_ratio_native(
+                    has_images=bool(has_images),
+                    configured_ratio=float(max_cover_area_ratio_native),
+                    auto_unlimited_no_images=auto_unlimited_native_cover_on_text_pages,
+                )
+                render_mode_page = _resolve_render_mode_for_page(
+                    configured_render_mode=render_mode,
+                    has_images=bool(has_images),
+                    auto_rasterize_text_pages=auto_rasterize_text_pages_in_overlay_original,
+                )
+                info["render_mode_effective"] = render_mode_page
+
+                if render_mode_page == "pdf_overlay":
                     create_translated_page_pdf_overlay(
                         page_rect=page_rect,
                         bg_img=bg_img,
@@ -792,10 +998,10 @@ def run_pipeline(
                         cover_blend_to_white=cover_blend_to_white,
                         cover_opacity_native=cover_opacity_native,
                         cover_opacity_ocr=cover_opacity_ocr,
-                        max_cover_area_ratio_native=max_cover_area_ratio_native,
+                        max_cover_area_ratio_native=eff_max_cover_area_ratio_native,
                         max_cover_area_ratio_ocr=max_cover_area_ratio_ocr,
                     )
-                elif render_mode == "pdf_overlay_original":
+                elif render_mode_page == "pdf_overlay_original":
                     create_translated_page_pdf_overlay_original(
                         src_doc=doc,
                         src_page_number=page_number,
@@ -815,10 +1021,10 @@ def run_pipeline(
                         cover_blend_to_white=cover_blend_to_white,
                         cover_opacity_native=cover_opacity_native,
                         cover_opacity_ocr=cover_opacity_ocr,
-                        max_cover_area_ratio_native=max_cover_area_ratio_native,
+                        max_cover_area_ratio_native=eff_max_cover_area_ratio_native,
                         max_cover_area_ratio_ocr=max_cover_area_ratio_ocr,
                     )
-                elif render_mode == "raster":
+                elif render_mode_page == "raster":
                     img_out = apply_translations_raster(
                         bg_img=bg_img,
                         translated_blocks=translated_blocks,
@@ -840,7 +1046,7 @@ def run_pipeline(
                     )
                     d.close()
                 else:
-                    raise ValueError(f"Modo de render inválido: {render_mode}")
+                    raise ValueError(f"Modo de render inválido: {render_mode_page}")
 
                 timings["render_out_sec"] = round(time.time() - t_rend0, 3)
 
