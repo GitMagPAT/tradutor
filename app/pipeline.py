@@ -734,6 +734,8 @@ def run_pipeline(
                     retry_max_chars = int(pipe_cfg.get("retranslate_unchanged_max_chars", 800))
                     retry_max_blocks = int(pipe_cfg.get("retranslate_unchanged_max_blocks_per_page", 250))
                     retry_entity_mode = str(pipe_cfg.get("retranslate_unchanged_entity_mode", "relaxed") or "relaxed")
+                    retry_english_heavy = bool(pipe_cfg.get("retranslate_english_heavy", True))
+                    retry_english_heavy_max_blocks = int(pipe_cfg.get("retranslate_english_heavy_max_blocks_per_page", 80))
 
                     retry_candidates: List[int] = []
 
@@ -911,7 +913,7 @@ def run_pipeline(
                         max_cover_area_ratio_native=eff_max_cover_area_ratio_native,
                         max_cover_area_ratio_ocr=max_cover_area_ratio_ocr,
                     )
-                elif render_mode == "pdf_overlay_original":
+                elif render_mode_page == "pdf_overlay_original":
                     create_translated_page_pdf_overlay_original(
                         src_doc=doc,
                         src_page_number=page_number,
@@ -934,7 +936,7 @@ def run_pipeline(
                         max_cover_area_ratio_native=eff_max_cover_area_ratio_native,
                         max_cover_area_ratio_ocr=max_cover_area_ratio_ocr,
                     )
-                elif render_mode == "raster":
+                elif render_mode_page == "raster":
                     img_out = apply_translations_raster(
                         bg_img=bg_img,
                         translated_blocks=translated_blocks,
@@ -956,7 +958,7 @@ def run_pipeline(
                     )
                     d.close()
                 else:
-                    raise ValueError(f"Modo de render inválido: {render_mode}")
+                    raise ValueError(f"Modo de render inválido: {render_mode_page}")
 
                 timings["render_out_sec"] = round(time.time() - t_rend0, 3)
 
