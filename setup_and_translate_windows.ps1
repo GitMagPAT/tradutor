@@ -151,6 +151,40 @@ function Ensure-TorchCpu($Py) {
   }
 }
 
+function Assert-NoMergeConflicts($RootPath) {
+  # Baixo risco: evita rodar com arquivo quebrado por conflito Git (<<<<<<< ======= >>>>>>>)
+  $targets = @(
+    (Join-Path $RootPath "app\*.py"),
+    (Join-Path $RootPath "config.yaml")
+  )
+  $bad = @()
+  foreach ($pat in $targets) {
+    Get-ChildItem -Path $pat -ErrorAction SilentlyContinue | ForEach-Object {
+      $m = Select-String -Path $_.FullName -Pattern "^<<<<<<< |^=======|^>>>>>>> " -ErrorAction SilentlyContinue
+      if ($m) { $bad += $_.FullName }
+    }
+  }
+  if ($bad.Count -gt 0) {
+    throw "Foram encontrados marcadores de conflito Git em: $($bad -join ', '). Resolva os conflitos antes de executar a tradução."
+  }
+}
+
+function Assert-PythonSyntax($Py, $RootPath) {
+  # Baixo risco: falha cedo se houver erro de sintaxe/indentação em módulos do app
+  $probe = @'
+import compileall
+import pathlib
+root = pathlib.Path(r"__ROOT__") / "app"
+ok = compileall.compile_dir(str(root), quiet=1)
+raise SystemExit(0 if ok else 1)
+'@
+  $probe = $probe.Replace("__ROOT__", $RootPath)
+  & $Py -c $probe
+  if ($LASTEXITCODE -ne 0) {
+    throw "Foram detectados erros de sintaxe/indentação em arquivos Python (app/*.py). Rode 'python -m py_compile app\qa.py' e corrija antes de traduzir."
+  }
+}
+
 function Add-ToPath($Dir, [bool]$Persist) {
   if (-not (Test-Path $Dir)) { return }
   if ($env:PATH -notlike "*$Dir*") {
@@ -198,6 +232,25 @@ function Ensure-Tesseract {
   }
 
   throw "Não consegui localizar o Tesseract após instalação. Procure por 'tesseract.exe' e ajuste manualmente."
+}
+
+
+function Assert-OutputWritable($OutPath) {
+  $outDir = Split-Path $OutPath -Parent
+  if (-not [string]::IsNullOrWhiteSpace($outDir) -and -not (Test-Path $outDir)) {
+    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+  }
+
+  if (-not (Test-Path $OutPath)) {
+    return
+  }
+
+  try {
+    $fs = [System.IO.File]::Open($OutPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    $fs.Close()
+  } catch {
+    throw "Arquivo de saída está em uso: $OutPath. Feche o PDF no visualizador (Adobe/Edge/etc.) e rode novamente."
+  }
 }
 
 function Download-File($Url, $OutPath) {
@@ -492,6 +545,10 @@ if ($Translator -eq "translategemma") {
 if ($Translator -eq "libretranslate") {
   Ensure-LibreTranslate-Docker $LibreTranslateUrl
 }
+
+Assert-NoMergeConflicts $ROOT
+Assert-PythonSyntax $PY $ROOT
+Assert-OutputWritable $Out
 
 Write-Step "Rodando pipeline de tradução..."
 $cmd = @(
