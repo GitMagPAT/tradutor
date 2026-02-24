@@ -185,10 +185,8 @@ raise SystemExit(0 if ok else 1)
   }
 }
 
-<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf-t1k0g8
-=======
         main
->>>>>>> main
+        main
 function Add-ToPath($Dir, [bool]$Persist) {
   if (-not (Test-Path $Dir)) { return }
   if ($env:PATH -notlike "*$Dir*") {
@@ -551,12 +549,8 @@ if ($Translator -eq "libretranslate") {
 }
 
 Assert-NoMergeConflicts $ROOT
-<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf-t1k0g8
-Assert-PythonSyntax $PY $ROOT
-Assert-OutputWritable $Out
-=======
         main
->>>>>>> main
+        main
 
 Write-Step "Rodando pipeline de tradução..."
 $cmd = @(

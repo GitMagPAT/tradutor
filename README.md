@@ -300,7 +300,6 @@ use uma destas opções de baixo risco:
 - Atualize/instale **App Installer** (Microsoft Store)
 - Ou instale manualmente Python e Tesseract
 
-<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf-t1k0g8
 ## Erro com `<<<<<<<` no `setup_and_translate_windows.ps1` (conflito Git)
 
 Se o PowerShell mostrar erro na linha com `<<<<<<< ...`, o arquivo foi salvo com conflito de merge não resolvido.
@@ -322,8 +321,7 @@ Select-String -Path .\setup_and_translate_windows.ps1 -Pattern '^(<<<<<<< |=====
 
 > Dica: evite editar o arquivo manualmente quando estiver com conflito; restaure do `origin/main` primeiro.
 
-=======
->>>>>>> main
+ main
 ## “IndentationError” / “SyntaxError” em `app/qa.py` (ou outro módulo)
 
 Se aparecer erro de sintaxe/indentação durante o QA (`IndentationError`, `SyntaxError`), isso indica arquivo com conflito/edição quebrada.
@@ -339,7 +337,6 @@ python -m py_compile app\qa.py app\pipeline.py app\translate.py
 
 > O `setup_and_translate_windows.ps1` já faz validação de sintaxe antes de iniciar o pipeline.
 
-<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf-t1k0g8
 ## Saída com inglês + português misturado (sombra do texto original)
 
 Se ainda aparecer “sombra” do inglês em páginas textuais, mantenha:
@@ -354,8 +351,7 @@ Se quiser máxima força em todo o documento, use direto:
 .\setup_and_translate_windows.ps1 -Pdf "input\meu_arquivo.pdf" -RenderMode "pdf_overlay"
 ```
 
-=======
->>>>>>> main
+ main
 ## “Permission denied” ao salvar `output\...pdf`
 
 Se aparecer erro como `cannot remove file ... Permission denied`, normalmente o PDF de saída está aberto em outro programa.
