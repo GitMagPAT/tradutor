@@ -169,6 +169,7 @@ function Assert-NoMergeConflicts($RootPath) {
   }
 }
 
+<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf
 function Assert-PythonSyntax($Py, $RootPath) {
   # Baixo risco: falha cedo se houver erro de sintaxe/indentação em módulos do app
   $probe = @'
@@ -185,6 +186,8 @@ raise SystemExit(0 if ok else 1)
   }
 }
 
+=======
+>>>>>>> main
 function Add-ToPath($Dir, [bool]$Persist) {
   if (-not (Test-Path $Dir)) { return }
   if ($env:PATH -notlike "*$Dir*") {
@@ -547,8 +550,11 @@ if ($Translator -eq "libretranslate") {
 }
 
 Assert-NoMergeConflicts $ROOT
+<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf
 Assert-PythonSyntax $PY $ROOT
 Assert-OutputWritable $Out
+=======
+>>>>>>> main
 
 Write-Step "Rodando pipeline de tradução..."
 $cmd = @(
