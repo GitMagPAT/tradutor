@@ -41,6 +41,8 @@ pipeline:
   qa_fail_on_zxq: true
   qa_unchanged_ratio_warn: 0.85
   qa_unchanged_min_chars: 300
+  qa_report_path: ""          # vazio = work/qa_report.json
+  qa_fail_score_threshold: 0   # 0 desliga gate por score; 1..100 habilita
   keep_work: true             # mantém work/ (logs, cache, páginas) ao final
   log_blocks: false           # true = inclui lista de blocos no JSON de log (útil p/ debug, gera logs maiores)
 
@@ -128,6 +130,7 @@ translator:
 
   mymemory_email: ""              # se usar MyMemory, recomendo preencher (aumenta limite diário)
   glossary_path: "glossary.yaml"  # opcional: crie um glossário para forçar termos
+  do_not_translate_path: "do_not_translate.yaml"  # termos/siglas/comandos que devem permanecer iguais
 
   # Performance: traduz vários blocos por request (reduz overhead em HTTP).
   batch_mode: "auto"              # auto | on | off
@@ -172,9 +175,29 @@ render:
 
   # Cobertura de texto nativo: "block" (caixa inteira) | "line" (por linha) | "word" (por palavra)
   native_cover_mode: "line"
+  auto_native_cover_mode: true  # sem imagens => usa block para cobrir melhor texto original
 
   # Para blocos nativos "esparsos" (diagramas), dividir em sub-blocos menores para evitar caixas enormes
   split_sparse_native_blocks: true
   sparse_native_min_area_ratio: 0.04
   sparse_native_max_chars: 120
   sparse_cluster_gap_factor: 2.5
+
+
+# Assistência opcional por LLM (ex.: Ministral 3B/8B/14B via endpoint OpenAI-compatible)
+llm_assist:
+  enabled: false
+  base_url: "http://127.0.0.1:1234/v1"
+  model: "ministral-8b-instruct"
+  api_key: ""
+  timeout_sec: 60
+  temperature: 0.0
+
+  # Pós-edição em PT-BR de blocos já traduzidos (baixo risco quando restrito por tamanho)
+  post_edit_enabled: false
+  post_edit_min_chars: 30
+  post_edit_max_chars: 700
+  post_edit_max_blocks_per_page: 30
+
+  # Revisão opcional do relatório QA (texto de resumo e ações)
+  qa_review_enabled: false
