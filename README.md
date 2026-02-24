@@ -282,9 +282,69 @@ Se algo der errado no meio, você pode rodar de novo e ele continua (resume).
 
 # 🧯 Troubleshooting
 
+
+## Erro do PSReadLine ao colar comando grande
+
+Se aparecer erro `System.ArgumentOutOfRangeException` do **PSReadLine** ao colar um comando muito longo com crases (```),
+use uma destas opções de baixo risco:
+
+1. Colar o comando em blocos menores;
+2. Salvar os parâmetros em um arquivo `.ps1` e executar o arquivo;
+3. Executar versão curta:
+
+```powershell
+.\setup_and_translate_windows.ps1 -Pdf "input\meu_arquivo.pdf" -Out "output\meu_arquivo_ptbr.pdf" -Translator "opusmt" -RenderMode "pdf_overlay_original" -PersistToolsPath
+```
+
 ## “winget não encontrado”
 - Atualize/instale **App Installer** (Microsoft Store)
 - Ou instale manualmente Python e Tesseract
+
+## Erro com `<<<<<<<` no `setup_and_translate_windows.ps1` (conflito Git)
+
+Se o PowerShell mostrar erro na linha com `<<<<<<< ...`, o arquivo foi salvo com conflito de merge não resolvido.
+
+1. No repositório local, rode:
+
+```powershell
+git fetch origin
+git checkout origin/main -- setup_and_translate_windows.ps1
+```
+
+2. Confirme que não restaram marcadores:
+
+```powershell
+Select-String -Path .\setup_and_translate_windows.ps1 -Pattern '^(<<<<<<< |=======|>>>>>>> )'
+```
+
+3. Rode o script novamente.
+
+> Dica: evite editar o arquivo manualmente quando estiver com conflito; restaure do `origin/main` primeiro.
+
+## “IndentationError” / “SyntaxError” em `app/qa.py` (ou outro módulo)
+
+Se aparecer erro de sintaxe/indentação durante o QA (`IndentationError`, `SyntaxError`), isso indica arquivo com conflito/edição quebrada.
+
+1. Atualize seu branch com `origin/main`.
+2. Rode validação rápida:
+
+```powershell
+python -m py_compile app\qa.py app\pipeline.py app\translate.py
+```
+
+3. Execute novamente o script de tradução.
+
+> O `setup_and_translate_windows.ps1` já faz validação de sintaxe antes de iniciar o pipeline.
+
+## “Permission denied” ao salvar `output\...pdf`
+
+Se aparecer erro como `cannot remove file ... Permission denied`, normalmente o PDF de saída está aberto em outro programa.
+
+1. Feche o arquivo em visualizadores (Adobe, Edge, navegador com preview, etc.).
+2. Rode novamente o comando.
+3. Se necessário, troque o nome de saída (`-Out`) para um novo arquivo.
+
+> O script agora valida esse cenário antes de iniciar o pipeline e aborta com mensagem clara quando o arquivo estiver bloqueado.
 
 ## “tesseract.exe não encontrado”
 - Verifique se existe:
