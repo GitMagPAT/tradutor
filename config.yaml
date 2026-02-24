@@ -181,3 +181,22 @@ render:
   sparse_native_min_area_ratio: 0.04
   sparse_native_max_chars: 120
   sparse_cluster_gap_factor: 2.5
+
+
+# Assistência opcional por LLM (ex.: Ministral 3B/8B/14B via endpoint OpenAI-compatible)
+llm_assist:
+  enabled: false
+  base_url: "http://127.0.0.1:1234/v1"
+  model: "ministral-8b-instruct"
+  api_key: ""
+  timeout_sec: 60
+  temperature: 0.0
+
+  # Pós-edição em PT-BR de blocos já traduzidos (baixo risco quando restrito por tamanho)
+  post_edit_enabled: false
+  post_edit_min_chars: 30
+  post_edit_max_chars: 700
+  post_edit_max_blocks_per_page: 30
+
+  # Revisão opcional do relatório QA (texto de resumo e ações)
+  qa_review_enabled: false

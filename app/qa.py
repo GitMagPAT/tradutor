@@ -7,6 +7,8 @@ from typing import Any, Dict, List
 
 import fitz  # PyMuPDF
 
+from .llm_assist import build_llm_assist_client
+
 # Detectores de vazamento de placeholders.
 _ZXQ_RE = re.compile(r"ZXQ", re.I)
 _ZXQ_FUZZY_RE = re.compile(r"Z[XQ]{0,4}(?:ENT|GLOS)\w*\d", re.I)
@@ -153,12 +155,28 @@ def run_qa_scan(workdir: Path, out_pdf: Path, cfg: Dict[str, Any]) -> Dict[str, 
         reverse=True,
     )
 
+<<<<<<< codex/auditar-qualidade-de-traducao-e-preservacao-de-pdf
+    llm_review: Dict[str, Any] = {}
+    llm_assist = build_llm_assist_client(cfg)
+    llm_cfg = (cfg.get("llm_assist") or {}) if isinstance(cfg, dict) else {}
+    if llm_assist and bool(llm_cfg.get("qa_review_enabled", False)):
+        try:
+            llm_review = llm_assist.summarize_qa_report({
+                "summary": {**summary, "top_risky_pages": top_risky_pages[:10]},
+                "issues": issues[:50],
+            })
+        except Exception:
+            llm_review = {"risk_summary": "NÃO CONSTA", "actions": [], "confidence": 0.0}
+
+=======
+>>>>>>> main
     report: Dict[str, Any] = {
         "enabled": True,
         "summary": {**summary, "top_risky_pages": top_risky_pages[:10]},
         "issues": issues,
         "out_pdf": str(out_pdf),
         "workdir": str(workdir),
+        "llm_review": llm_review,
     }
 
     # 3) Persistir artefatos de QA

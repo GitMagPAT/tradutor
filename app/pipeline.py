@@ -25,6 +25,7 @@ from .render import (
 )
 from .translate import build_translator, load_glossary, load_do_not_translate, translate_many_with_cache, lang_for_translator
 from .utils import rect_iou, stable_hash, file_signature
+from .llm_assist import build_llm_assist_client, validate_post_edit_candidate
 
 
 class TranslatorFatalError(RuntimeError):
@@ -256,6 +257,13 @@ def run_pipeline(
     cache = TranslationCache(workdir / "cache.sqlite", memory_max_entries=cache_mem, commit_every=cache_commit)
 
     translator = build_translator(cfg)
+    llm_assist = build_llm_assist_client(cfg)
+
+    llm_cfg = cfg.get("llm_assist", {}) or {}
+    llm_post_edit_enabled = bool(llm_assist) and bool(llm_cfg.get("post_edit_enabled", False))
+    llm_post_edit_min_chars = int(llm_cfg.get("post_edit_min_chars", 30))
+    llm_post_edit_max_chars = int(llm_cfg.get("post_edit_max_chars", 700))
+    llm_post_edit_max_blocks_per_page = int(llm_cfg.get("post_edit_max_blocks_per_page", 30))
 
     source_lang = str(cfg.get("source_lang", "en"))
     target_lang = str(cfg.get("target_lang", "pt"))
@@ -741,6 +749,43 @@ def run_pipeline(
                         timings["translate_retry_sec"] = round(time.time() - t_retry0, 3)
                     else:
                         timings["translate_retry_sec"] = 0.0
+
+                    # Pós-edição opcional com LLM (ex.: Ministral) para fluência/consistência.
+                    if llm_post_edit_enabled and translated_texts:
+                        pe_candidates = []
+                        for i0, tr_txt in enumerate(translated_texts):
+                            txt_len = len((tr_txt or "").strip())
+                            if txt_len < llm_post_edit_min_chars or txt_len > llm_post_edit_max_chars:
+                                continue
+                            if len(pe_candidates) >= llm_post_edit_max_blocks_per_page:
+                                break
+                            pe_candidates.append(i0)
+
+                        pe_changed = 0
+                        pe_errors = 0
+                        for idx0 in pe_candidates:
+                            try:
+                                new_txt = llm_assist.post_edit_block(blocks_all[idx0].text, translated_texts[idx0]) if llm_assist else translated_texts[idx0]
+                            except Exception:
+                                pe_errors += 1
+                                continue
+                            if (new_txt or "").strip() and new_txt.strip() != (translated_texts[idx0] or "").strip():
+                                ok_edit, reasons = validate_post_edit_candidate(translated_texts[idx0], new_txt)
+                                if ok_edit:
+                                    translated_texts[idx0] = new_txt.strip()
+                                    pe_changed += 1
+                                else:
+                                    info["warnings"].append("llm_post_edit_rejected_guard")
+                                    info.setdefault("llm_post_edit_rejected_reasons", []).append({
+                                        "block_id": blocks_all[idx0].block_id,
+                                        "reasons": reasons,
+                                    })
+
+                        info["llm_post_edit_candidates"] = len(pe_candidates)
+                        info["llm_post_edit_changed"] = int(pe_changed)
+                        if pe_errors:
+                            info["warnings"].append("llm_post_edit_partial_fail")
+                            info["llm_post_edit_errors"] = int(pe_errors)
 
                     changed, unchanged = _count_changed_unchanged(blocks_all, translated_texts)
 
