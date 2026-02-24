@@ -171,6 +171,7 @@ render:
   cover_opacity_native: 1.0
   cover_opacity_ocr: 0.85
   max_cover_area_ratio_native: 0.50
+  auto_unlimited_native_cover_on_text_pages: true  # em páginas sem imagens, evita mistura EN+PT por limite de área
   max_cover_area_ratio_ocr: 0.15
 
   # Cobertura de texto nativo: "block" (caixa inteira) | "line" (por linha) | "word" (por palavra)

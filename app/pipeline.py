@@ -53,6 +53,22 @@ def _resolve_native_cover_mode(has_images: bool, configured_mode: str, auto_mode
     if auto_mode and (not has_images):
         return "block"
     return mode
+
+
+def _effective_max_cover_area_ratio_native(has_images: bool, configured_ratio: float, auto_unlimited_no_images: bool) -> float:
+    """Define limite de cobertura nativa por página (baixo risco).
+
+    Problema observado: em páginas sem imagens, um bloco nativo grande pode ter
+    cobertura desativada pelo limite de área e causar mistura EN+PT no resultado.
+    Nesses casos, é mais seguro permitir cobertura ampla.
+    """
+    try:
+        ratio = float(configured_ratio)
+    except Exception:
+        ratio = 0.50
+    if auto_unlimited_no_images and (not has_images):
+        return 1.0
+    return ratio
 def _filter_ocr_duplicates(
     ocr_blocks: List[TextBlock],
     native_blocks: List[TextBlock],
@@ -370,6 +386,7 @@ def run_pipeline(
     cover_opacity_ocr = float(render_cfg.get("cover_opacity_ocr", 0.85))
     max_cover_area_ratio_native = float(render_cfg.get("max_cover_area_ratio_native", 0.50))
     max_cover_area_ratio_ocr = float(render_cfg.get("max_cover_area_ratio_ocr", 0.15))
+    auto_unlimited_native_cover_on_text_pages = bool(render_cfg.get("auto_unlimited_native_cover_on_text_pages", True))
 
     # Tesseract via env (o PowerShell normalmente seta)
     import os
@@ -853,6 +870,11 @@ def run_pipeline(
 
                 # 6) Render output page
                 t_rend0 = time.time()
+                eff_max_cover_area_ratio_native = _effective_max_cover_area_ratio_native(
+                    has_images=bool(has_images),
+                    configured_ratio=float(max_cover_area_ratio_native),
+                    auto_unlimited_no_images=auto_unlimited_native_cover_on_text_pages,
+                )
                 if render_mode == "pdf_overlay":
                     create_translated_page_pdf_overlay(
                         page_rect=page_rect,
@@ -871,7 +893,7 @@ def run_pipeline(
                         cover_blend_to_white=cover_blend_to_white,
                         cover_opacity_native=cover_opacity_native,
                         cover_opacity_ocr=cover_opacity_ocr,
-                        max_cover_area_ratio_native=max_cover_area_ratio_native,
+                        max_cover_area_ratio_native=eff_max_cover_area_ratio_native,
                         max_cover_area_ratio_ocr=max_cover_area_ratio_ocr,
                     )
                 elif render_mode == "pdf_overlay_original":
@@ -894,7 +916,7 @@ def run_pipeline(
                         cover_blend_to_white=cover_blend_to_white,
                         cover_opacity_native=cover_opacity_native,
                         cover_opacity_ocr=cover_opacity_ocr,
-                        max_cover_area_ratio_native=max_cover_area_ratio_native,
+                        max_cover_area_ratio_native=eff_max_cover_area_ratio_native,
                         max_cover_area_ratio_ocr=max_cover_area_ratio_ocr,
                     )
                 elif render_mode == "raster":
