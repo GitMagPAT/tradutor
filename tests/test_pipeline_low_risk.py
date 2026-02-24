@@ -4,6 +4,9 @@ import pytest
 
 from app import pipeline
 from app.pipeline import _resolve_native_cover_mode, _effective_max_cover_area_ratio_native
+from app.pipeline import _resolve_native_cover_mode, _effective_max_cover_area_ratio_native
+from app.pipeline import _resolve_native_cover_mode
+        main
 
 
 def test_resolve_native_cover_mode_auto_switches_without_images():
@@ -42,3 +45,4 @@ def test_merge_page_pdfs_shows_clear_message_when_output_is_locked(monkeypatch, 
 
     with pytest.raises(RuntimeError, match="Feche o arquivo no visualizador"):
         pipeline._merge_page_pdfs([], tmp_path / "out.pdf")
+        main

@@ -300,27 +300,6 @@ use uma destas opções de baixo risco:
 - Atualize/instale **App Installer** (Microsoft Store)
 - Ou instale manualmente Python e Tesseract
 
-## Erro com `<<<<<<<` no `setup_and_translate_windows.ps1` (conflito Git)
-
-Se o PowerShell mostrar erro na linha com `<<<<<<< ...`, o arquivo foi salvo com conflito de merge não resolvido.
-
-1. No repositório local, rode:
-
-```powershell
-git fetch origin
-git checkout origin/main -- setup_and_translate_windows.ps1
-```
-
-2. Confirme que não restaram marcadores:
-
-```powershell
-Select-String -Path .\setup_and_translate_windows.ps1 -Pattern '^(<<<<<<< |=======|>>>>>>> )'
-```
-
-3. Rode o script novamente.
-
-> Dica: evite editar o arquivo manualmente quando estiver com conflito; restaure do `origin/main` primeiro.
-
 ## “IndentationError” / “SyntaxError” em `app/qa.py` (ou outro módulo)
 
 Se aparecer erro de sintaxe/indentação durante o QA (`IndentationError`, `SyntaxError`), isso indica arquivo com conflito/edição quebrada.
