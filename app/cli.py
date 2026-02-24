@@ -71,6 +71,9 @@ def build_parser() -> argparse.ArgumentParser:
     # Pipeline
     p.add_argument("--no-resume", action="store_true", help="Não reaproveitar páginas já geradas em work/out_pages.")
     p.add_argument("--no-keep-work", action="store_true", help="Apagar work/ ao final (não recomendado enquanto você testa).")
+    p.add_argument("--qa-report", type=Path, default=None, help="Caminho customizado para salvar relatório QA JSON.")
+    p.add_argument("--qa-threshold", type=int, default=None, help="Falha quando o score de risco máximo por página atingir este valor (0-100).")
+    p.add_argument("--audit-mode", action="store_true", help="Ativa modo auditor (qa_scan=true e log_blocks=true).")
 
     # Tesseract
     p.add_argument("--tesseract-cmd", default=None, help="Caminho do tesseract.exe se não estiver no PATH.")
@@ -137,12 +140,19 @@ def main(argv: Optional[list[str]] = None) -> int:
             rd["jpg_quality"] = int(args.jpg_quality)
         overrides["render"] = rd
 
-    if args.no_resume or args.no_keep_work:
+    if args.no_resume or args.no_keep_work or args.qa_report is not None or args.qa_threshold is not None or args.audit_mode:
         pl = dict((cfg.get("pipeline") or {}))
         if args.no_resume:
             pl["resume"] = False
         if args.no_keep_work:
             pl["keep_work"] = False
+        if args.qa_report is not None:
+            pl["qa_report_path"] = str(args.qa_report)
+        if args.qa_threshold is not None:
+            pl["qa_fail_score_threshold"] = int(args.qa_threshold)
+        if args.audit_mode:
+            pl["qa_scan"] = True
+            pl["log_blocks"] = True
         overrides["pipeline"] = pl
 
     cfg = deep_update(cfg, overrides)
